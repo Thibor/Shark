@@ -38,7 +38,6 @@ struct Move {
 const Move no_move{};
 
 struct Stack {
-	Move moves[218];
 	Move move;
 	Move killer;
 	int score;
@@ -174,6 +173,36 @@ static string MoveToUci(const Move& move, const int flip) {
 	return str;
 }
 
+static Move UciToMove(string& uci, int flip) {
+	Move m;
+	m.from = (uci[0] - 'a');
+	int f = (uci[1] - '1');
+	m.from += 8 * (flip ? 7 - f : f);
+	m.to = (uci[2] - 'a');
+	f = (uci[3] - '1');
+	m.to += 8 * (flip ? 7 - f : f);
+	m.promo = PT_NB;
+	switch (uci[4]) {
+	case 'N':
+	case 'n':
+		m.promo = KNIGHT;
+		break;
+	case 'B':
+	case 'b':
+		m.promo = BISHOP;
+		break;
+	case 'R':
+	case 'r':
+		m.promo = ROOK;
+		break;
+	case 'Q':
+	case 'q':
+		m.promo = QUEEN;
+		break;
+	}
+	return m;
+}
+
 static int PieceTypeOn(const Position& pos, const int sq) {
 	const U64 bb = 1ULL << sq;
 	for (int i = 0; i < 6; ++i) {
@@ -303,7 +332,7 @@ static void generate_pawn_moves(Move* const movelist, int& num_moves, U64 to_mas
 	}
 }
 
-static void generate_piece_moves(Move* const movelist,int& num_moves,const Position& pos,const int piece,const U64 to_mask,U64(*func)(int, U64)) {
+static void generate_piece_moves(Move* const movelist, int& num_moves, const Position& pos, const int piece, const U64 to_mask, U64(*func)(int, U64)) {
 	U64 copy = pos.color[0] & pos.pieces[piece];
 	while (copy) {
 		const int fr = lsb(copy);
@@ -453,10 +482,6 @@ static int EvalPosition(Position& pos) {
 	bbStart1 = pos.color[1] & pos.pieces[PAWN];
 	control1 = sw(bbStart1) | se(bbStart1);
 	score = Popcount(control0) - Popcount(control1);
-	//PrintBitboard(pos.color[1]);
-	//PrintBitboard(pos.pieces[PAWN]);
-	//PrintBitboard(control0);
-	//PrintBitboard(control1);
 
 	bbStart0 = pos.color[0] & pos.pieces[KNIGHT];
 	bbMask0 = BbKnightAttack(bbStart0) & ~control1;
@@ -489,7 +514,7 @@ static int EvalPosition(Position& pos) {
 	score += Popcount(control0 & bbCenter3) - Popcount(control1 & bbCenter3);
 
 	bbStart0 = pos.color[0] & pos.pieces[KING];
-	bbStart0 = (nw(bbStart0) | ne(bbStart0) | North(bbStart0)) & ~(FileDBB| FileEBB);
+	bbStart0 = (nw(bbStart0) | ne(bbStart0) | North(bbStart0)) & ~(FileDBB | FileEBB);
 	control0 = bbStart0 & pos.color[0] & pos.pieces[PAWN];
 	bbStart1 = pos.color[1] & pos.pieces[KING];
 	bbStart1 = sw(bbStart1) | se(bbStart1) | South(bbStart1) & ~(FileDBB | FileEBB);
@@ -500,13 +525,6 @@ static int EvalPosition(Position& pos) {
 	control0 = bbStart0 & pos.color[0];
 	control1 = bbStart1 & pos.color[1];
 	score = Popcount(control0) - Popcount(control1);
-	/*bbStart = pos.color[0] & pos.pieces[KING];
-	blockers = pos.color[0] | pos.pieces[PAWN];
-	bbMask0 = BbBishopAttack(bbStart, blockers) | BbRookAttack(bbStart, blockers);
-	bbStart = pos.color[1] & pos.pieces[KING];
-	blockers = pos.color[1] | pos.pieces[PAWN];
-	bbMask1 = BbBishopAttack(bbStart, blockers) | BbRookAttack(bbStart, blockers);
-	score += Popcount(bbMask1) - Popcount(bbMask0);*/
 	return score;
 }
 
@@ -548,7 +566,7 @@ static int SearchAlpha(Position& pos, int alpha, const int beta, int depth, cons
 	}
 	else if (depth > 3)
 		depth--;
-	auto& moves = stack[ply].moves;
+	Move moves[256];
 	const int num_moves = MoveGen(pos, moves, in_qsearch);
 	int64_t move_scores[256];
 	for (int j = 0; j < num_moves; ++j) {
@@ -584,7 +602,7 @@ static int SearchAlpha(Position& pos, int alpha, const int beta, int depth, cons
 		moves[best_move_index] = moves[i];
 		move_scores[best_move_index] = move_scores[i];
 		auto npos = pos;
-		if (!MakeMove(npos, move)) 
+		if (!MakeMove(npos, move))
 			continue;
 		int score = -SearchAlpha(npos, -beta, -alpha, depth - 1, ply + 1, stack, hh_table, hash_history);
 		if (info.stop) { hash_history.pop_back(); return 0; }
@@ -657,7 +675,7 @@ static void SetFen(Position& pos, const string& fen) {
 	memset(pos.color, 0, sizeof(pos.color));
 	memset(pos.pieces, 0, sizeof(pos.pieces));
 	memset(pos.castling, 0, sizeof(pos.castling));
-	stringstream ss{ fen };
+	stringstream ss(fen);
 	string word;
 	ss >> word;
 	int i = 56;
@@ -698,22 +716,6 @@ static void SetFen(Position& pos, const string& fen) {
 		FlipPosition(pos);
 }
 
-static vector<string> SplitString(string s) {
-	vector<string> words;
-	istringstream iss(s);
-	string word;
-	while (iss >> word)
-		words.push_back(word);
-	return words;
-}
-
-static int UciInt(vector<string> list, string command, int def) {
-	for (int n = 0; n < list.size() - 1; n++)
-		if (list[n] == command)
-			return stoi(list[n + 1]);
-	return def;
-}
-
 static void PrintBoard(Position& pos) {
 	Position np = pos;
 	if (np.flipped)
@@ -743,12 +745,82 @@ static void PrintBoard(Position& pos) {
 	printf("castling : %10s\n", castling);
 }
 
-static void UciCommand(string line) {
-	string value;
-	vector<string> split = SplitString(line);
-	if (split.empty())
+static void ParsePosition(string command) {
+	string fen = DEFAULT_FEN;
+	stringstream ss(command);
+	string token;
+	ss >> token;
+	if (token != "position") 
 		return;
-	string command = split[0];
+	ss >> token;
+	if (token == "startpos")
+		ss >> token;
+	else if (token == "fen") {
+		fen = "";
+		while (ss >> token && token != "moves")
+			fen += token + " ";
+		fen.pop_back();
+	}
+	SetFen(pos, fen);
+	while (ss >> token) {
+		Move m = UciToMove(token, pos.flipped);
+		MakeMove(pos, m);
+	}
+}
+
+static void ParseGo(string command) {
+	std::stringstream ss(command);
+	std::string token;
+	ss >> token;
+	if (token != "go")
+		return;
+	info.stop = false;
+	info.nodes = 0;
+	info.depthLimit = 64;
+	info.nodesLimit = 0;
+	info.timeLimit = 0;
+	info.timeStart = GetTimeMs();
+	int wtime = 0;
+	int btime = 0;
+	int winc = 0;
+	int binc = 0;
+	int movestogo = 32;
+	char* argument = NULL;
+	while (ss >> token) {
+		if (token == "wtime") {
+			ss >> wtime;
+		}
+		else if (token == "btime") {
+			ss >> btime;
+		}
+		else if (token == "winc") {
+			ss >> winc;
+		}
+		else if (token == "binc") {
+			ss >> binc;
+		}
+		else if (token == "movestogo") {
+			ss >> movestogo;
+		}
+		else if (token == "movetime") {
+			ss >> info.timeLimit;
+		}
+		else if (token == "depth") {
+			ss >> info.depthLimit;
+		}
+		else if (token == "nodes") {
+			ss >> info.nodesLimit;
+		}
+	}
+	int time = pos.flipped ? btime : wtime;
+	int inc = pos.flipped ? binc : winc;
+	if (time)
+		info.timeLimit = min(time / movestogo + inc, time / 2);
+}
+
+static void UciCommand(string command) {
+	if (command.empty())
+		return;
 	if (command == "uci")
 	{
 		cout << "id name " << NAME << endl;
@@ -756,73 +828,26 @@ static void UciCommand(string line) {
 	}
 	else if (command == "isready")
 		cout << "readyok" << endl;
-	else if (command == "position") {
+	else if (command.substr(0, 8) == "position") {
 		pos = Position();
 		hash_history.clear();
-		int mark = 0;
-		string pFen = "";
-		vector<string> pMoves = {};
-		for (int i = 1; i < split.size(); i++) {
-			if (mark == 1)
-				pFen += ' ' + split[i];
-			if (mark == 2)
-				pMoves.push_back(split[i]);
-			if (split[i] == "fen")
-				mark = 1;
-			else if (split[i] == "moves")
-				mark = 2;
-		}
-		SetFen(pos, pFen.empty() ? DEFAULT_FEN : pFen);
-		Move moves[256];
-		for (string uci : pMoves) {
-			const int num_moves = MoveGen(pos, moves, false);
-			for (int i = 0; i < num_moves; ++i) {
-				if (uci == MoveToUci(moves[i], pos.flipped)) {
-					if (PieceTypeOn(pos, moves[i].to) != PT_NB || PieceTypeOn(pos, moves[i].from) == PAWN) {
-						hash_history.clear();
-					}
-					else {
-						hash_history.emplace_back(GetHash(pos));
-					}
-					MakeMove(pos, moves[i]);
-					break;
-				}
-			}
-		}
+		ParsePosition(command);
 	}
-	else if (command == "go") {
-		int depth = UciInt(split, "depth", MAX_DEPTH);
-		int nodes = UciInt(split, "nodes", 0);
-		int wtime = UciInt(split, "wtime", 0);
-		int btime = UciInt(split, "btime", 0);
-		int winc = UciInt(split, "winc", 0);
-		int binc = UciInt(split, "binc", 0);
-		int movetime = UciInt(split, "movetime", 0);
-		int movestogo = UciInt(split, "movestogo", 32);
-		int ct = pos.flipped ? btime : wtime;
-		int inc = pos.flipped ? binc : winc;
-		int st = min(ct / movestogo + inc, ct / 2);
-		info.depthLimit = depth;
-		info.nodesLimit = nodes;
-		info.timeLimit = movetime ? movetime : st;
+	else if (command.substr(0, 2) == "go") {
+		ParseGo(command);
 		const Move best_move = SearchIteratively(pos, hash_history);
 		cout << "bestmove " << MoveToUci(best_move, pos.flipped) << endl << flush;
 	}
 	else if (command == "print") {
 		PrintBoard(pos);
 	}
-	else if (command == "test") {
-		EvalPosition(pos);
-	}
 	else if (command == "quit")
 		exit(0);
 }
 
 static void UciLoop() {
-	//UciCommand("position startpos moves a2a4 a7a5 b2b3");
-	//UciCommand("position startpos moves a2a4");
-	//UciCommand("go depth 1");
-	//PrintBoard(pos);
+	//UciCommand("position startpos moves b1c3 g7g6 d2d4 f8g7 c1e3");
+	//UciCommand("go depth 5");
 	string line;
 	while (true) {
 		getline(cin, line);
