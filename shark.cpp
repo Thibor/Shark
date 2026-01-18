@@ -216,7 +216,7 @@ static int PieceTypeOn(const Position& pos, const int sq) {
 	return PT_NB;
 }
 
-static void ResetLimit() {
+static void ResetInfo() {
 	info.post = true;
 	info.stop = false;
 	info.nodes = 0;
@@ -497,9 +497,7 @@ static int ShrinkNumber(U64 n) {
 
 //displays a summary
 static void PrintSummary(U64 time, U64 nodes) {
-	if (time < 1)
-		time = 1;
-	U64 nps = (nodes * 1000) / time;
+	U64 nps = (nodes * 1000) / max(time,1ull);
 	const char* units[] = { "", "k", "m", "g" };
 	int sn = ShrinkNumber(nps);
 	U64 p = pow(10, sn * 3);
@@ -831,8 +829,7 @@ static void SetFen(Position& pos, const string& fen) {
 		FlipPosition(pos);
 }
 
-void PrintPerformanceHeader()
-{
+void PrintPerformanceHeader(){
 	printf("-----------------------------\n");
 	printf("ply      time        nodes\n");
 	printf("-----------------------------\n");
@@ -840,12 +837,12 @@ void PrintPerformanceHeader()
 
 //start benchmark
 static void UciBench() {
-	ResetLimit();
+	ResetInfo();
 	PrintPerformanceHeader();
 	SetFen(pos, START_FEN);
 	info.depthLimit = 0;
 	info.post = false;
-	S64 elapsed = 0;
+	U64 elapsed = 0;
 	while (elapsed < 3000)
 	{
 		++info.depthLimit;
@@ -853,22 +850,23 @@ static void UciBench() {
 		elapsed = GetTimeMs() - info.timeStart;
 		printf(" %2d. %8llu %12llu\n", info.depthLimit, elapsed, info.nodes);
 	}
-	PrintSummary(GetTimeMs() - info.timeStart, info.nodes);
+	PrintSummary(elapsed, info.nodes);
 }
 
 //start performance test
-static void UciPerformance()
-{
-	ResetLimit();
+static void UciPerformance(){
+	ResetInfo();
 	PrintPerformanceHeader();
-	int depth = 0;
 	SetFen(pos, START_FEN);
-	while (GetTimeMs() - info.timeStart < 3000)
+	info.depthLimit = 0;
+	S64 elapsed = 0;
+	while (elapsed < 3000)
 	{
-		PerftDriver(pos, depth++);
-		printf(" %2d. %8llu %12llu\n", depth, GetTimeMs() - info.timeStart, info.nodes);
+		PerftDriver(pos, info.depthLimit++);
+		elapsed = GetTimeMs() - info.timeStart;
+		printf(" %2d. %8llu %12llu\n", info.depthLimit,elapsed, info.nodes);
 	}
-	PrintSummary(GetTimeMs() - info.timeStart, info.nodes);
+	PrintSummary(elapsed, info.nodes);
 }
 
 static void PrintBoard(Position& pos) {
@@ -931,7 +929,7 @@ static void ParseGo(string command) {
 	ss >> token;
 	if (token != "go")
 		return;
-	ResetLimit();
+	ResetInfo();
 	int wtime = 0;
 	int btime = 0;
 	int winc = 0;
