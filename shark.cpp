@@ -8,7 +8,7 @@
 
 using namespace std;
 
-#define MAX_PLY 100
+#define MAX_PLY 64
 #define INF 32001
 #define MATE 32000
 #define U8 unsigned __int8
@@ -97,6 +97,8 @@ TT_Entry tt[tt_count]{};
 int hash_count = 0;
 U64 hash_history[1024]{};
 
+void UciCommand(string command);
+
 static bool IsRepetition(U64 hash) {
 	for (int n = hash_count - 4; n >= 0; n -= 2)
 		if (hash_history[n] == hash)
@@ -177,7 +179,7 @@ static string SquareToUci(const int sq, const int flip) {
 }
 
 static string MoveToUci(const Move& move, const int flip) {
-	string str = SquareToUci(move.from,flip) + SquareToUci(move.to,flip);
+	string str = SquareToUci(move.from, flip) + SquareToUci(move.to, flip);
 	if (move.promo != PT_NB)
 		str += "\0nbrq\0\0"[move.promo];
 	return str;
@@ -342,13 +344,12 @@ static void generate_pawn_moves(Move* const movelist, int& num_moves, U64 to_mas
 			add_move(movelist, num_moves, to + offset, to, BISHOP);
 			add_move(movelist, num_moves, to + offset, to, KNIGHT);
 		}
-		else {
+		else
 			add_move(movelist, num_moves, to + offset, to);
-		}
 	}
 }
 
-static void generate_piece_moves(Move* const movelist, int& num_moves, const Position& pos, const int piece, const U64 to_mask, U64(*func)(int, U64)) {
+static void GeneratePieceMoves(Move* const movelist, int& num_moves, const Position& pos, const int piece, const U64 to_mask, U64(*func)(int, U64)) {
 	U64 copy = pos.color[0] & pos.pieces[piece];
 	while (copy) {
 		const int fr = LSB(copy);
@@ -374,12 +375,12 @@ static int MoveGen(const Position& pos, Move* const movelist, const bool only_ca
 	}
 	generate_pawn_moves(movelist, num_moves, NW(pawns) & (pos.color[1] | pos.ep), -7);
 	generate_pawn_moves(movelist, num_moves, NE(pawns) & (pos.color[1] | pos.ep), -9);
-	generate_piece_moves(movelist, num_moves, pos, KNIGHT, to_mask, KnightAttack);
-	generate_piece_moves(movelist, num_moves, pos, BISHOP, to_mask, BishopAttack);
-	generate_piece_moves(movelist, num_moves, pos, QUEEN, to_mask, BishopAttack);
-	generate_piece_moves(movelist, num_moves, pos, ROOK, to_mask, RookAttack);
-	generate_piece_moves(movelist, num_moves, pos, QUEEN, to_mask, RookAttack);
-	generate_piece_moves(movelist, num_moves, pos, KING, to_mask, KingAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, KNIGHT, to_mask, KnightAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, BISHOP, to_mask, BishopAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, QUEEN, to_mask, BishopAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, ROOK, to_mask, RookAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, QUEEN, to_mask, RookAttack);
+	GeneratePieceMoves(movelist, num_moves, pos, KING, to_mask, KingAttack);
 	if (!only_captures && pos.castling[0] && !(all & 0x60ULL) && !IsAttacked(pos, 4) && !IsAttacked(pos, 5)) {
 		add_move(movelist, num_moves, 4, 6);
 	}
@@ -428,7 +429,7 @@ static auto GetHash(const Position& pos) {
 	return hash;
 }
 
-bool InputAvailable() {
+static bool InputAvailable() {
 	static HANDLE hstdin = 0;
 	static bool pipe = false;
 	unsigned long dw = 0;
@@ -462,8 +463,7 @@ static bool CheckUp() {
 		if (InputAvailable()) {
 			string line;
 			getline(cin, line);
-			if (line == "stop")
-				info.stop = true;
+			UciCommand(line);
 		}
 	}
 	return info.stop;
@@ -997,7 +997,7 @@ static void ParseGo(string command) {
 	SearchIterate(pos);
 }
 
-static void UciCommand(string command) {
+void UciCommand(string command) {
 	if (command.empty())
 		return;
 	if (command == "uci")
@@ -1012,6 +1012,8 @@ static void UciCommand(string command) {
 		UciPerformance();
 	else if (command == "print")
 		PrintBoard(pos);
+	else if (command == "stop")
+		info.stop = true;
 	else if (command == "quit")
 		exit(0);
 	else if (command.substr(0, 8) == "position")
