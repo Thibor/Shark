@@ -26,11 +26,11 @@ enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
 enum Bound { UPPER, LOWER, EXACT };
 
 struct Position {
-	int castling[4]{};
+	bool flipped = false;
+	U64 castling[4]{};
 	U64 color[2]{};
 	U64 pieces[6]{};
 	U64 ep = 0x0ULL;
-	bool flipped = false;
 }pos;
 
 struct Move {
@@ -59,13 +59,13 @@ struct TT_Entry {
 };
 
 struct SearchInfo {
-	bool post = true;
-	bool stop = false;
-	int depthLimit = MAX_PLY;
-	U64 timeStart = 0;
-	U64 timeLimit = 0;
-	U64 nodes = 0;
-	U64 nodesLimit = 0;
+	bool post;
+	bool stop;
+	int depthLimit;
+	U64 timeStart;
+	U64 timeLimit;
+	U64 nodes;
+	U64 nodesLimit;
 }info;
 
 constexpr U64 FileABB = 0x0101010101010101ULL;
@@ -157,9 +157,8 @@ static U64 SE(const U64 bb) {
 static void FlipPosition(Position& pos) {
 	pos.color[0] = Flip(pos.color[0]);
 	pos.color[1] = Flip(pos.color[1]);
-	for (int i = 0; i < 6; ++i) {
+	for (int i = 0; i < 6; ++i)
 		pos.pieces[i] = Flip(pos.pieces[i]);
-	}
 	pos.ep = Flip(pos.ep);
 	swap(pos.color[0], pos.color[1]);
 	swap(pos.castling[0], pos.castling[2]);
@@ -526,29 +525,6 @@ static void PrintBitboard(U64 bb) {
 	cout << t << endl;
 }
 
-static int ShrinkNumber(U64 n) {
-	if (n < 10000)
-		return 0;
-	if (n < 10000000)
-		return 1;
-	if (n < 10000000000)
-		return 2;
-	return 3;
-}
-
-//displays a summary
-static void PrintSummary(U64 time, U64 nodes) {
-	U64 nps = (nodes * 1000) / max(time, 1ull);
-	const char* units[] = { "", "k", "m", "g" };
-	int sn = ShrinkNumber(nps);
-	U64 p = (int)pow(10, sn * 3);
-	printf("-----------------------------\n");
-	printf("Time        : %llu\n", time);
-	printf("Nodes       : %llu\n", nodes);
-	printf("Nps         : %llu (%llu%s/s)\n", nps, nps / p, units[sn]);
-	printf("-----------------------------\n");
-}
-
 static int EvalPosition(Position& pos) {
 	int score = 0;
 	U64 bbBlockers = pos.color[0] | pos.color[1];
@@ -866,6 +842,29 @@ static void SetFen(Position& pos, const string& fen) {
 		FlipPosition(pos);
 }
 
+static int ShrinkNumber(U64 n) {
+	if (n < 10000)
+		return 0;
+	if (n < 10000000)
+		return 1;
+	if (n < 10000000000)
+		return 2;
+	return 3;
+}
+
+//displays a summary
+static void PrintSummary(U64 time, U64 nodes) {
+	U64 nps = (nodes * 1000) / max(time, 1ull);
+	const char* units[] = { "", "k", "m", "g" };
+	int sn = ShrinkNumber(nps);
+	U64 p = (int)pow(10, sn * 3);
+	printf("-----------------------------\n");
+	printf("Time        : %llu\n", time);
+	printf("Nodes       : %llu\n", nodes);
+	printf("Nps         : %llu (%llu%s/s)\n", nps, nps / p, units[sn]);
+	printf("-----------------------------\n");
+}
+
 void PrintPerformanceHeader() {
 	printf("-----------------------------\n");
 	printf("ply      time        nodes\n");
@@ -1030,11 +1029,15 @@ static void UciLoop() {
 	}
 }
 
-int main(const int argc, const char** argv) {
-	cout << NAME << " " << VERSION << endl;
+void InitHash() {
 	mt19937_64 r;
 	for (U64& k : keys)
 		k = r();
+}
+
+int main(const int argc, const char** argv) {
+	cout << NAME << " " << VERSION << endl;
+	InitHash();
 	SetFen(pos, START_FEN);
 	UciLoop();
 }
