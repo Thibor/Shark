@@ -556,9 +556,13 @@ static int EvalPosition(Position& pos) {
 	return score;
 }
 
-static int SearchAlpha(Position& pos, int alpha, const int beta, int depth, const int ply, Stack* const stack, const bool do_null = true) {
+static int SearchAlpha(Position& pos, int alpha, int beta, int depth, const int ply, Stack* const stack, const bool do_null = true) {
 	if (CheckUp())
 		return 0;
+	int  mate_value = MATE - ply;
+	if (alpha < -mate_value) alpha = -mate_value;
+	if (beta > mate_value - 1) beta = mate_value - 1;
+	if (alpha >= beta) return alpha;
 	int static_eval = EvalPosition(pos);
 	if (ply >= MAX_PLY)
 		return static_eval;
