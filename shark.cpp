@@ -31,7 +31,7 @@ struct Position {
 	U64 color[2]{};
 	U64 pieces[6]{};
 	U64 ep = 0x0ULL;
-}pos;
+};
 
 struct Move {
 	U8 from = 0;
@@ -97,7 +97,7 @@ TT_Entry tt[tt_count]{};
 int hash_count = 0;
 U64 hash_history[1024]{};
 
-void UciCommand(string command);
+void UciCommand(Position& pos,string command);
 
 static bool IsRepetition(U64 hash) {
 	for (int n = hash_count - 4; n >= 0; n -= 2)
@@ -453,7 +453,7 @@ static bool InputAvailable() {
 	return dw > 1;
 }
 
-static bool CheckUp() {
+static bool CheckUp(Position& pos) {
 	if ((++info.nodes & 0xffff) == 0) {
 		if (info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit)
 			info.stop = true;
@@ -462,7 +462,7 @@ static bool CheckUp() {
 		if (InputAvailable()) {
 			string line;
 			getline(cin, line);
-			UciCommand(line);
+			UciCommand(pos,line);
 		}
 	}
 	return info.stop;
@@ -557,7 +557,7 @@ static int EvalPosition(Position& pos) {
 }
 
 static int SearchAlpha(Position& pos, int alpha, int beta, int depth, const int ply, Stack* const stack, const bool do_null = true) {
-	if (CheckUp())
+	if (CheckUp(pos))
 		return 0;
 	int  mate_value = MATE - ply;
 	if (alpha < -mate_value) alpha = -mate_value;
@@ -576,8 +576,6 @@ static int SearchAlpha(Position& pos, int alpha, int beta, int depth, const int 
 	if (ply > 0 && !in_qsearch)
 		if (IsRepetition(tt_key))
 			return 0;
-
-	// TT Probing
 	TT_Entry& tt_entry = tt[tt_key % tt_count];
 	Move tt_move{};
 	if (tt_entry.key == tt_key) {
@@ -869,17 +867,16 @@ static void PrintSummary(U64 time, U64 nodes) {
 	printf("-----------------------------\n");
 }
 
-void PrintPerformanceHeader() {
+static void PrintPerformanceHeader() {
 	printf("-----------------------------\n");
 	printf("ply      time        nodes\n");
 	printf("-----------------------------\n");
 }
 
 //start benchmark
-static void UciBench() {
+static void UciBench(Position& pos) {
 	ResetInfo();
 	PrintPerformanceHeader();
-	SetFen(pos, START_FEN);
 	info.depthLimit = 0;
 	info.post = false;
 	U64 elapsed = 0;
@@ -894,10 +891,9 @@ static void UciBench() {
 }
 
 //start performance test
-static void UciPerformance() {
+static void UciPerformance(Position& pos) {
 	ResetInfo();
 	PrintPerformanceHeader();
-	SetFen(pos, START_FEN);
 	info.depthLimit = 0;
 	S64 elapsed = 0;
 	while (elapsed < 3000)
@@ -938,7 +934,7 @@ static void PrintBoard(Position& pos) {
 	printf("castling : %10s\n", castling);
 }
 
-static void ParsePosition(string command) {
+static void ParsePosition(Position& pos,string command) {
 	string fen = START_FEN;
 	stringstream ss(command);
 	string token;
@@ -963,7 +959,7 @@ static void ParsePosition(string command) {
 	}
 }
 
-static void ParseGo(string command) {
+static void ParseGo(Position& pos,string command) {
 	stringstream ss(command);
 	string token;
 	ss >> token;
@@ -1000,48 +996,38 @@ static void ParseGo(string command) {
 	SearchIterate(pos);
 }
 
-void UciCommand(string command) {
-	if (command.empty())
-		return;
-	if (command == "uci")
-		cout << "id name " << NAME << endl << "uciok" << endl;
-	else if (command == "isready")
-		cout << "readyok" << endl;
-	else if (command == "ucinewgame")
-		memset(hh_table, 0, sizeof(hh_table));
-	else if (command == "bench")
-		UciBench();
-	else if (command == "perft")
-		UciPerformance();
-	else if (command == "print")
-		PrintBoard(pos);
-	else if (command == "stop")
-		info.stop = true;
-	else if (command == "quit")
-		exit(0);
-	else if (command.substr(0, 8) == "position")
-		ParsePosition(command);
-	else if (command.substr(0, 2) == "go")
-		ParseGo(command);
+void UciCommand(Position& pos,string command) {
+	if (command.empty())return;
+	if (command == "uci")cout << "id name " << NAME << endl << "uciok" << endl;
+	else if (command == "isready")cout << "readyok" << endl;
+	else if (command == "ucinewgame")memset(hh_table, 0, sizeof(hh_table));
+	else if (command == "bench")UciBench(pos);
+	else if (command == "perft")UciPerformance(pos);
+	else if (command == "print")PrintBoard(pos);
+	else if (command == "stop")info.stop = true;
+	else if (command == "quit")exit(0);
+	else if (command.substr(0, 8) == "position")ParsePosition(pos,command);
+	else if (command.substr(0, 2) == "go")ParseGo(pos,command);
 }
 
-static void UciLoop() {
+static void UciLoop(Position& pos) {
 	string line;
 	while (true) {
 		getline(cin, line);
-		UciCommand(line);
+		UciCommand(pos,line);
 	}
 }
 
-void InitHash() {
+static void InitHash() {
 	mt19937_64 r;
 	for (U64& k : keys)
 		k = r();
 }
 
 int main(const int argc, const char** argv) {
+	Position pos;
 	cout << NAME << " " << VERSION << endl;
 	InitHash();
 	SetFen(pos, START_FEN);
-	UciLoop();
+	UciLoop(pos);
 }
