@@ -14,13 +14,14 @@
     <img src="https://img.shields.io/github/last-commit/Thibor/Shark?color=critical&style=for-the-badge">
 </div>
 
+FIDE-rules-compliant chess engine
+
 ## Features
 
-- [x] Alpha beta pruning<br>
-- [x] Quiescence search<br>
-- [x] Transposition table<br>
-- [x] Bitboard<br>
-- [ ] Mate distance pruning<br>
-- [ ] Null move pruning<br>
-- [ ] Futility pruning<br>
-- [ ] Razoring<br>
+- Single file
+- Board: pieces[64]
+- En passant
+- Underpromotions (knight, bishop, rook)
+- Threefold repetition
+- 50-move rule
+- Stalemate and checkmate reported correctly to the GUI
