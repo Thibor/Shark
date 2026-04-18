@@ -108,8 +108,9 @@ static U64 GetTimeMs() {
 	return GetTickCount64();
 }
 
-static bool IsRepetition(U64 hash) {
-	for (int n = hash_count - 4; n >= 0; n -= 2)
+static bool IsRepetition(Position& pos, U64 hash) {
+	int limit = max(0, hash_count - pos.move50);
+	for (int n = hash_count - 4; n >= limit; n -= 2)
 		if (hash_history[n] == hash)
 			return true;
 	return false;
@@ -300,7 +301,9 @@ static bool MakeMove(Position& pos, const Move& move) {
 	const int captured = PieceTypeOn(pos, move.to);
 	const U64 to = 1ULL << move.to;
 	const U64 from = 1ULL << move.from;
-	pos.move50 = captured != PT_NB || piece == PAWN ? 0 : pos.move50++;
+	pos.move50++;
+	if (captured != PT_NB || piece == PAWN)
+		pos.move50 = 0;
 	pos.color[0] ^= from | to;
 	pos.pieces[piece] ^= from | to;
 	if (piece == PAWN && to == pos.ep) {
@@ -491,7 +494,7 @@ static void PrintPv(const Position& pos, const Move move) {
 	const TT_Entry& tt_entry = tt[tt_key % tt_count];
 	if (tt_entry.key != tt_key || tt_entry.flag != EXACT)
 		return;
-	if (IsRepetition(tt_key))
+	if (IsRepetition(npos, tt_key))
 		return;
 	hash_history[hash_count++] = tt_key;
 	PrintPv(npos, tt_entry.move);
@@ -576,7 +579,7 @@ static int SearchAlpha(Position& pos, int alpha, int beta, int depth, const int 
 	const U64 tt_key = GetHash(pos);
 
 	if (ply && !in_qsearch)
-		if (pos.move50 >= 100 || IsRepetition(tt_key))
+		if (pos.move50 >= 100 || IsRepetition(pos, tt_key))
 			return 0;
 	TT_Entry& tt_entry = tt[tt_key % tt_count];
 	Move tt_move{};
@@ -884,7 +887,7 @@ static void UciBench(Position& pos) {
 	info.depthLimit = 0;
 	info.post = false;
 	U64 elapsed = 0;
-	while (elapsed < 3000){
+	while (elapsed < 3000) {
 		++info.depthLimit;
 		SearchIterate(pos);
 		elapsed = GetTimeMs() - info.timeStart;
@@ -899,7 +902,7 @@ static void UciPerformance(Position& pos) {
 	PrintPerformanceHeader();
 	info.depthLimit = 0;
 	S64 elapsed = 0;
-	while (elapsed < 3000){
+	while (elapsed < 3000) {
 		PerftDriver(pos, info.depthLimit++);
 		elapsed = GetTimeMs() - info.timeStart;
 		printf(" %2d. %8llu %12llu\n", info.depthLimit, elapsed, info.nodes);
@@ -934,7 +937,7 @@ static void PrintBoard(Position& pos) {
 			castling[n] = '-';
 	printf("side     : %16s\n", pos.flipped ? "black" : "white");
 	printf("castling : %16s\n", castling);
-	printf("hash     : %16llx\n",GetHash(pos));
+	printf("hash     : %16llx\n", GetHash(pos));
 }
 
 static void ParsePosition(Position& pos, string command) {
@@ -1023,7 +1026,7 @@ static void UciLoop(Position& pos) {
 static void InitHash() {
 	mt19937_64 r;
 	for (U64& k : keys)
-	k = r();
+		k = r();
 }
 
 int main(const int argc, const char** argv) {
